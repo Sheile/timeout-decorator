@@ -9,6 +9,7 @@ from __future__ import print_function
 from __future__ import unicode_literals
 from __future__ import division
 
+import os
 import sys
 import time
 import multiprocessing
@@ -47,7 +48,7 @@ def _raise_exception(exception, exception_message):
         raise exception(exception_message)
 
 
-def timeout(seconds=None, use_signals=True, timeout_exception=TimeoutError, exception_message=None):
+def timeout(seconds=None, use_signals=True, termination_signal=signal.SIGTERM, timeout_exception=TimeoutError, exception_message=None):
     """Add a timeout parameter to a function and return it.
 
     :param seconds: optional time limit in seconds or fractions of a second. If None is passed, no timeout is applied.
@@ -56,6 +57,8 @@ def timeout(seconds=None, use_signals=True, timeout_exception=TimeoutError, exce
     :param use_signals: flag indicating whether signals should be used for timing function out or the multiprocessing
         When using multiprocessing, timeout granularity is limited to 10ths of a second.
     :type use_signals: bool
+    :param termination_signal: signal for termination when use multiprocessing.
+    :type termination_signal: int
 
     :raises: TimeoutError if time limit is reached
 
@@ -88,7 +91,7 @@ def timeout(seconds=None, use_signals=True, timeout_exception=TimeoutError, exce
         else:
             @wraps(function)
             def new_function(*args, **kwargs):
-                timeout_wrapper = _Timeout(function, timeout_exception, exception_message, seconds)
+                timeout_wrapper = _Timeout(function, timeout_exception, exception_message, seconds, termination_signal)
                 return timeout_wrapper(*args, **kwargs)
             return new_function
 
@@ -118,12 +121,13 @@ class _Timeout(object):
     to be made and termination of execution after a timeout has passed.
     """
 
-    def __init__(self, function, timeout_exception, exception_message, limit):
+    def __init__(self, function, timeout_exception, exception_message, limit, termination_signal):
         """Initialize instance in preparation for being called."""
         self.__limit = limit
         self.__function = function
         self.__timeout_exception = timeout_exception
         self.__exception_message = exception_message
+        self.__termination_signal = termination_signal
         self.__name__ = function.__name__
         self.__doc__ = function.__doc__
         self.__timeout = time.time()
@@ -154,7 +158,7 @@ class _Timeout(object):
     def cancel(self):
         """Terminate any possible execution of the embedded function."""
         if self.__process.is_alive():
-            self.__process.terminate()
+            os.kill(self.__process.pid, self.__termination_signal)
 
         _raise_exception(self.__timeout_exception, self.__exception_message)
 
